@@ -1,0 +1,4 @@
+Joystick.IsSupported: True
+  Joystick 0: "6 axis 32 button device with hat switch" axes=2 buttons=16 gamepad=False
+winmm devices:
+  readable: Microsoft PC-joystick driver

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PipelineBuildEvent xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <SourceFile>C:/Users/chris/Documents/Cursor Projects/VectorBreakout/VectorBreakout/Content/Effects/SparkExplosion.fx</SourceFile>
+  <SourceTime>2026-06-08T14:44:26.9726574-07:00</SourceTime>
+  <DestFile>C:/Users/chris/Documents/Cursor Projects/VectorBreakout/VectorBreakout/Content/bin/DesktopGL/Content/Effects/SparkExplosion.xnb</DestFile>
+  <DestTime>2026-06-08T14:46:43.8882916-07:00</DestTime>
+  <Importer>EffectImporter</Importer>
+  <ImporterTime>2025-10-20T07:25:32-07:00</ImporterTime>
+  <Processor>EffectProcessor</Processor>
+  <ProcessorTime>2025-10-20T07:25:32-07:00</ProcessorTime>
+  <Parameters>
+    <Key>DebugMode</Key>
+    <Value>Auto</Value>
+  </Parameters>
+  <Dependencies />
+  <BuildAsset />
+  <BuildOutput />
+</PipelineBuildEvent>
