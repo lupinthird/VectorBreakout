@@ -1,0 +1,20 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+*.userprefs
+
+## Visual Studio / Rider
+.vs/
+.idea/
+*.DotSettings.user
+
+## MonoGame
+*.mgstats
+Content/bin/
+Content/obj/
+
+## OS
+.DS_Store
+Thumbs.db
