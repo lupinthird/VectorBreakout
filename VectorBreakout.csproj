@@ -8,9 +8,20 @@
     <PublishReadyToRun>false</PublishReadyToRun>
     <TieredCompilation>false</TieredCompilation>
   </PropertyGroup>
-  <PropertyGroup>
+  <PropertyGroup Condition="$([MSBuild]::IsOSPlatform('Windows'))">
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <ApplicationIcon>Icon.ico</ApplicationIcon>
+  </PropertyGroup>
+  <!--
+    MGCB effect compilation on Linux requires Wine + MGFXC_WINE_PATH (x64 Windows toolchain).
+    That is not available on linux-arm64, so use committed Content/Prebuilt/*.xnb instead.
+    Override with -p:UsePrebuiltContent=false when Wine is configured (e.g. linux-x64).
+  -->
+  <PropertyGroup Condition="'$(UsePrebuiltContent)' == '' and $([MSBuild]::IsOSPlatform('Linux')) and '$(MGFXC_WINE_PATH)' == ''">
+    <UsePrebuiltContent>true</UsePrebuiltContent>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(UsePrebuiltContent)' == 'true'">
+    <EnableMGCBItems>false</EnableMGCBItems>
   </PropertyGroup>
   <ItemGroup>
     <None Remove="Icon.ico" />
@@ -24,8 +35,18 @@
       <LogicalName>Icon.bmp</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
+  <ItemGroup Condition="'$(UsePrebuiltContent)' == 'true'">
+    <Content Include="Content\Prebuilt\**\*.xnb">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Link>Content\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </Content>
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.*" />
     <PackageReference Include="MonoGame.Content.Builder.Task" Version="3.8.*" />
   </ItemGroup>
+  <Target Name="SyncPrebuiltContent" AfterTargets="RunContentBuilder" Condition="'$(UsePrebuiltContent)' != 'true'">
+    <Copy SourceFiles="Content\bin\DesktopGL\Content\Effects\BrickShimmer.xnb" DestinationFiles="Content\Prebuilt\Effects\BrickShimmer.xnb" SkipUnchangedFiles="true" Condition="Exists('Content\bin\DesktopGL\Content\Effects\BrickShimmer.xnb')" />
+    <Copy SourceFiles="Content\bin\DesktopGL\Content\Effects\SparkExplosion.xnb" DestinationFiles="Content\Prebuilt\Effects\SparkExplosion.xnb" SkipUnchangedFiles="true" Condition="Exists('Content\bin\DesktopGL\Content\Effects\SparkExplosion.xnb')" />
+  </Target>
 </Project>
