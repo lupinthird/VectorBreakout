@@ -176,7 +176,7 @@ public sealed class VectorLineRenderer : IDisposable
         }
     }
 
-    public void Draw(float glowScale = 1.8f, Effect? brickShimmerEffect = null, float totalTime = 0f, Vector2 playfieldCenter = default)
+    public void Draw(Effect? brickShimmerEffect = null, float totalTime = 0f, Vector2 playfieldCenter = default)
     {
         var previousBlendState = _graphicsDevice.BlendState;
         var previousDepthState = _graphicsDevice.DepthStencilState;
@@ -198,8 +198,6 @@ public sealed class VectorLineRenderer : IDisposable
         foreach (EffectPass pass in _effect.CurrentTechnique.Passes)
         {
             pass.Apply();
-
-            DrawCurrentLinesScaled(0.28f * glowScale);
             DrawCurrentLines();
         }
 
@@ -321,19 +319,6 @@ public sealed class VectorLineRenderer : IDisposable
         {
             LineVertex source = _lineVertices[i];
             vertices[i] = new LineVertex(new Vector2(source.Position.X, source.Position.Y), source.Color);
-        }
-
-        _graphicsDevice.DrawUserPrimitives(PrimitiveType.LineList, vertices, 0, vertices.Length / 2);
-    }
-
-    private void DrawCurrentLinesScaled(float brightness)
-    {
-        var vertices = new LineVertex[_lineVertices.Count];
-        for (int i = 0; i < _lineVertices.Count; i++)
-        {
-            LineVertex source = _lineVertices[i];
-            Color color = source.Color * brightness;
-            vertices[i] = new LineVertex(new Vector2(source.Position.X, source.Position.Y), color);
         }
 
         _graphicsDevice.DrawUserPrimitives(PrimitiveType.LineList, vertices, 0, vertices.Length / 2);

@@ -1,4 +1,5 @@
 using Microsoft.Xna.Framework;
+using VectorBreakout.Game;
 
 namespace VectorBreakout.Rendering;
 
@@ -8,41 +9,60 @@ public static class HudOverlay
     private const float ScoreScale = 3.75f;
     private const float LifeIconRadius = 8f;
     private const float LifeIconSpacing = 28f;
-    private const float StartPromptScale = 2.35f;
-    private const float LaunchPromptScale = 2.2f;
+    private const float PromptScale = 2.35f;
+    private const float CountdownScale = 6.5f;
+    private const float GameOverScale = 4.2f;
+
+    private static float UiScale => PlayfieldMetrics.Scale;
 
     public static void DrawScoreAndLives(VectorLineRenderer renderer, int score, int lives)
     {
         Color hudColor = Color.White;
-        Vector2 scorePosition = new Vector2(HudMargin, HudMargin);
-        VectorLineFont.DrawInteger(renderer, score, scorePosition, ScoreScale, hudColor);
+        float scale = UiScale;
+        float margin = HudMargin * scale;
+        Vector2 scorePosition = new Vector2(margin, margin);
+        VectorLordsFont.DrawInteger(renderer, score, scorePosition, ScoreScale * scale, hudColor);
 
-        float scoreHeight = 9f * ScoreScale;
-        Vector2 livesOrigin = new Vector2(HudMargin, HudMargin + scoreHeight + 14f);
+        float scoreHeight = VectorLordsFont.GlyphHeight * ScoreScale * scale;
+        Vector2 livesOrigin = new Vector2(margin, margin + scoreHeight + 14f * scale);
         for (int i = 0; i < lives; i++)
         {
-            Vector2 center = livesOrigin + new Vector2(i * LifeIconSpacing, 0f);
-            BallOutline.DrawOctagon(renderer, center, LifeIconRadius, Color.White);
+            Vector2 center = livesOrigin + new Vector2(i * LifeIconSpacing * scale, 0f);
+            BallOutline.DrawOctagon(renderer, center, LifeIconRadius * scale, Color.White);
         }
     }
 
-    public static void DrawStartPrompt(VectorLineRenderer renderer)
+    public static void DrawPressButton1ToStart(VectorLineRenderer renderer)
     {
-        VectorLineFont.DrawString(
+        float scale = UiScale;
+        VectorLordsFont.DrawString(
             renderer,
-            "PRESS SPACE OR CLICK",
-            new Vector2(HudMargin, HudMargin),
-            StartPromptScale,
+            "PRESS BUTTON 1 TO START",
+            new Vector2(HudMargin * scale, HudMargin * scale),
+            PromptScale * scale,
             Color.White);
     }
 
-    public static void DrawLaunchPrompt(VectorLineRenderer renderer, Vector2 playfieldCenter)
+    public static void DrawGameOver(VectorLineRenderer renderer, Vector2 playfieldCenter)
     {
-        VectorLineFont.DrawStringCentered(
+        float scale = UiScale;
+        Color accent = new Color(255, 120, 120);
+        VectorLordsFont.DrawStringCentered(
             renderer,
-            "PRESS SPACE OR CLICK TO LAUNCH",
-            playfieldCenter + new Vector2(0f, 130f),
-            LaunchPromptScale,
+            "GAME OVER",
+            playfieldCenter - new Vector2(0f, 40f * scale),
+            GameOverScale * scale,
+            accent);
+    }
+
+    public static void DrawLaunchCountdown(VectorLineRenderer renderer, Vector2 playfieldCenter, int secondsRemaining)
+    {
+        float scale = UiScale;
+        VectorLordsFont.DrawIntegerCentered(
+            renderer,
+            secondsRemaining,
+            playfieldCenter + new Vector2(0f, 20f * scale),
+            CountdownScale * scale,
             Color.White);
     }
 
@@ -61,33 +81,53 @@ public static class HudOverlay
         const float promptScale = 2.35f;
         Color hudColor = Color.White;
         Color accent = new Color(180, 220, 255);
+        float scale = UiScale;
+        float lineGap = 52f * scale;
 
-        float lineGap = 52f;
+        VectorLordsFont.DrawStringCentered(
+            renderer,
+            "LEVEL CLEAR",
+            playfieldCenter - new Vector2(0f, 150f * scale),
+            titleScale * scale,
+            accent);
+        VectorLordsFont.DrawIntegerCentered(
+            renderer,
+            baseScore,
+            playfieldCenter - new Vector2(0f, 35f * scale),
+            mainScale * scale,
+            hudColor);
 
-        VectorLineFont.DrawStringCentered(renderer, "LEVEL CLEAR", playfieldCenter - new Vector2(0f, 150f), titleScale, accent);
-        VectorLineFont.DrawIntegerCentered(renderer, baseScore, playfieldCenter - new Vector2(0f, 35f), mainScale, hudColor);
-
-        Vector2 bonusLabelCenter = playfieldCenter + new Vector2(0f, 35f + lineGap);
+        Vector2 bonusLabelCenter = playfieldCenter + new Vector2(0f, 35f * scale + lineGap);
         if (bonusScore > 0 || showGrandTotal)
         {
-            VectorLineFont.DrawStringCentered(renderer, "BONUS", bonusLabelCenter, labelScale, accent);
-            VectorLineFont.DrawIntegerCentered(renderer, bonusScore, bonusLabelCenter + new Vector2(0f, 38f), valueScale, accent);
+            VectorLordsFont.DrawStringCentered(renderer, "BONUS", bonusLabelCenter, labelScale * scale, accent);
+            VectorLordsFont.DrawIntegerCentered(
+                renderer,
+                bonusScore,
+                bonusLabelCenter + new Vector2(0f, 38f * scale),
+                valueScale * scale,
+                accent);
         }
 
         if (showGrandTotal)
         {
-            Vector2 totalLabelCenter = playfieldCenter + new Vector2(0f, 35f + lineGap * 2.4f);
-            VectorLineFont.DrawStringCentered(renderer, "TOTAL", totalLabelCenter, labelScale, hudColor);
-            VectorLineFont.DrawIntegerCentered(renderer, baseScore + bonusScore, totalLabelCenter + new Vector2(0f, 42f), mainScale, hudColor);
+            Vector2 totalLabelCenter = playfieldCenter + new Vector2(0f, 35f * scale + lineGap * 2.4f);
+            VectorLordsFont.DrawStringCentered(renderer, "TOTAL", totalLabelCenter, labelScale * scale, hudColor);
+            VectorLordsFont.DrawIntegerCentered(
+                renderer,
+                baseScore + bonusScore,
+                totalLabelCenter + new Vector2(0f, 42f * scale),
+                mainScale * scale,
+                hudColor);
         }
 
         if (showAdvancePrompt)
         {
-            VectorLineFont.DrawStringCentered(
+            VectorLordsFont.DrawStringCentered(
                 renderer,
-                "PRESS GRAVITY TO CONTINUE",
-                playfieldCenter + new Vector2(0f, 230f),
-                promptScale,
+                "PRESS BUTTON 2 TO CONTINUE",
+                playfieldCenter + new Vector2(0f, 230f * scale),
+                promptScale * scale,
                 Color.White);
         }
     }

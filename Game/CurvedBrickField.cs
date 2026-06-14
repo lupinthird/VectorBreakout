@@ -47,17 +47,17 @@ public sealed class CurvedBrickField
     }
 
     private const float RingRotationSpeed = 0.22f;
-    private const int CenterRingCount = 4;
 
     private readonly List<Brick> _bricks = new();
-    private readonly float[] _ringRotations = new float[CenterRingCount];
+    private int _centerRingCount;
+    private float[] _ringRotations = new float[8];
     private readonly List<Vector2> _scratchOutline = new();
 
     public IReadOnlyList<Brick> Bricks => _bricks;
 
     public void Update(float dt)
     {
-        for (int ring = 0; ring < _ringRotations.Length; ring++)
+        for (int ring = 0; ring < _centerRingCount; ring++)
         {
             float direction = (ring % 2 == 0) ? 1f : -1f;
             _ringRotations[ring] += RingRotationSpeed * direction * dt;
@@ -123,18 +123,31 @@ public sealed class CurvedBrickField
         return RotateAround(brick.Center, fieldCenter, _ringRotations[brick.Ring]);
     }
 
-    public void BuildCenter(Vector2 center, float startRadius, int rings, int bricksPerRing)
+    public void BuildCenter(
+        Vector2 center,
+        float startRadius,
+        int rings,
+        int bricksPerRing,
+        float ringSpacing,
+        float radialThickness,
+        float angularGap)
     {
-        float radialThickness = 16f;
-        float gap = 0.055f;
+        _centerRingCount = rings;
+        if (_ringRotations.Length < rings)
+        {
+            _ringRotations = new float[rings];
+        }
+
+        Array.Clear(_ringRotations, 0, rings);
+
         for (int ring = 0; ring < rings; ring++)
         {
-            float radius = startRadius + ring * 34f;
+            float radius = startRadius + ring * ringSpacing;
             float ringOffset = ring * 0.14f;
             for (int i = 0; i < bricksPerRing; i++)
             {
                 float a0 = ringOffset + (MathHelper.TwoPi / bricksPerRing) * i;
-                float a1 = ringOffset + (MathHelper.TwoPi / bricksPerRing) * (i + 1) - gap;
+                float a1 = ringOffset + (MathHelper.TwoPi / bricksPerRing) * (i + 1) - angularGap;
 
                 float outerRadius = radius + radialThickness * 0.5f;
                 float innerRadius = radius - radialThickness * 0.5f;
@@ -160,9 +173,8 @@ public sealed class CurvedBrickField
         }
     }
 
-    public void BuildOuterWall(Vector2 center, float wallRadius, int wallBricks)
+    public void BuildOuterWall(Vector2 center, float wallRadius, float radialThickness, int wallBricks)
     {
-        const float radialThickness = 20f;
         const float gap = 0.004f;
         for (int i = 0; i < wallBricks; i++)
         {
@@ -194,6 +206,7 @@ public sealed class CurvedBrickField
     public void Clear()
     {
         _bricks.Clear();
+        _centerRingCount = 0;
         Array.Clear(_ringRotations, 0, _ringRotations.Length);
     }
 

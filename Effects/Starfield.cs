@@ -1,6 +1,7 @@
 using System;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using VectorBreakout.Game;
 
 namespace VectorBreakout.Effects;
 
@@ -36,7 +37,7 @@ public sealed class Starfield
         float minDim = MathF.Min(width, height);
         _arenaRadius = arenaRadius;
         _centerBrickOuterRadius = centerBrickOuterRadius;
-        _maxDistance = arenaRadius + 36f;
+        _maxDistance = arenaRadius + PlayfieldMetrics.S(36f);
 
         _spawnMinRadius = minDim * 0.12f;
         _brightenEndRadius = _spawnMinRadius + minDim * 0.1f;

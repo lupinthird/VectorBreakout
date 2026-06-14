@@ -27,14 +27,14 @@ public class Game1 : Microsoft.Xna.Framework.Game
     private bool _isCalibratingRefreshRate = true;
     private int _lockedRefreshRateHz;
     private ProceduralSfxPlayer? _sfx;
-    private readonly SpinnerControllerInput _spinnerInput = new();
-    private bool _previousSpinnerConnected;
+    private readonly BreakoutControllerInput _controllerInput = new();
+    private bool _previousControllerConnected;
 
     public Game1()
     {
         _graphics = new GraphicsDeviceManager(this);
         Content.RootDirectory = "Content";
-        IsMouseVisible = true;
+        IsMouseVisible = !OperatingSystem.IsLinux();
 
         DisplaySetup.ApplyNativeFullscreen(_graphics);
         _graphics.ApplyChanges();
@@ -68,8 +68,18 @@ public class Game1 : Microsoft.Xna.Framework.Game
         }
 
         _starfield = new Starfield();
-        _sfx = new ProceduralSfxPlayer();
-        _state.SetSfx(_sfx);
+        try
+        {
+            _sfx = new ProceduralSfxPlayer();
+            _state.SetSfx(_sfx);
+        }
+        catch (Microsoft.Xna.Framework.Audio.NoAudioHardwareException ex)
+        {
+            Console.Error.WriteLine($"[VectorBreakout] Audio unavailable; continuing without sound. {ex.Message}");
+            _sfx = null;
+        }
+
+        _controllerInput.Initialize();
         ApplyViewportLayout();
     }
 
@@ -93,15 +103,21 @@ public class Game1 : Microsoft.Xna.Framework.Game
 
         KeyboardState keyboard = Keyboard.GetState();
         MouseState mouse = Mouse.GetState();
-        _spinnerInput.Update();
+        float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
+        _controllerInput.Update(dt);
 
-        if (_spinnerInput.IsConnected != _previousSpinnerConnected)
+        if (_controllerInput.IsConnected != _previousControllerConnected)
         {
-            _state.Paddle.ResetSpinnerCalibration();
-            _previousSpinnerConnected = _spinnerInput.IsConnected;
+            _state.Paddle.ResetToDefault();
+            _previousControllerConnected = _controllerInput.IsConnected;
         }
 
         if (GamePad.GetState(PlayerIndex.One).Buttons.Back == ButtonState.Pressed || keyboard.IsKeyDown(Keys.Escape))
+        {
+            Exit();
+        }
+
+        if (!_gameStarted && _controllerInput.TryConsumeMenuExitHold(dt, enabled: true))
         {
             Exit();
         }
@@ -113,25 +129,35 @@ public class Game1 : Microsoft.Xna.Framework.Game
 
         bool leftClickPressed = mouse.LeftButton == ButtonState.Pressed && _previousMouse.LeftButton == ButtonState.Released;
         bool spacePressed = keyboard.IsKeyDown(Keys.Space) && !_previousKeyboard.IsKeyDown(Keys.Space);
-        bool launchPressed = spacePressed || leftClickPressed || _spinnerInput.LaunchPressed;
+        bool button1Pressed = _controllerInput.LaunchPressed || spacePressed || leftClickPressed;
 
-        bool gravityPressed = leftClickPressed
-            || (keyboard.IsKeyDown(Keys.G) && !_previousKeyboard.IsKeyDown(Keys.G))
-            || _spinnerInput.GravityPressed;
+        bool gravityPressed = (keyboard.IsKeyDown(Keys.G) && !_previousKeyboard.IsKeyDown(Keys.G))
+            || _controllerInput.GravityPressed;
 
         bool restartPressed = (keyboard.IsKeyDown(Keys.R) && !_previousKeyboard.IsKeyDown(Keys.R))
-            || _spinnerInput.RestartPressed;
+            || _controllerInput.RestartPressed;
 
         if (!_gameStarted)
         {
-            if (launchPressed)
+            if (button1Pressed)
             {
+                if (_state.IsGameOver)
+                {
+                    _state.Reset();
+                }
+
                 _gameStarted = true;
+                _starfield.ApplyGravityVisuals(false);
+                _state.BeginLaunchCountdown();
             }
         }
         else
         {
-            if (restartPressed)
+            if (_state.IsGameOver)
+            {
+                _gameStarted = false;
+            }
+            else if (restartPressed)
             {
                 _gameStarted = false;
                 _state.Reset();
@@ -145,27 +171,23 @@ public class Game1 : Microsoft.Xna.Framework.Game
                     _starfield.ApplyGravityVisuals(false);
                 }
             }
-            else if (!_state.IsLevelClearActive)
+            else if (_state.IsLaunchCountdownActive && button1Pressed)
             {
-                if (!_state.IsLaunched && (launchPressed || gravityPressed))
-                {
-                    _state.Launch();
-                }
-                else if (gravityPressed)
-                {
-                    _state.ToggleCenterGravity();
-                    _starfield.ApplyGravityVisuals(_state.CenterGravityEnabled);
-                }
+                _state.Launch();
+            }
+            else if (!_state.IsLevelClearActive && gravityPressed)
+            {
+                _state.ToggleCenterGravity();
+                _starfield.ApplyGravityVisuals(_state.CenterGravityEnabled);
             }
         }
 
         _previousKeyboard = keyboard;
         _previousMouse = mouse;
 
-        float dt = (float)gameTime.ElapsedGameTime.TotalSeconds;
         _starfield.Update(dt);
-        float? spinnerAxis = _spinnerInput.IsConnected ? _spinnerInput.SpinAxisRaw : null;
-        _state.Update(dt, mouse, _gameStarted, spinnerAxis);
+        PaddleControlInput? controllerInput = _controllerInput.GetPaddleControl(dt);
+        _state.Update(dt, mouse, _gameStarted, controllerInput);
 
         Window.Title = BuildWindowTitle();
 
@@ -193,14 +215,22 @@ public class Game1 : Microsoft.Xna.Framework.Game
         if (_gameStarted)
         {
             HudOverlay.DrawScoreAndLives(_lineRenderer, _state.HudDisplayScore, _state.Lives);
-            if (!_state.IsLaunched && !_state.IsLevelClearActive)
+            if (_state.IsLaunchCountdownActive)
             {
-                HudOverlay.DrawLaunchPrompt(_lineRenderer, _state.PlayfieldCenter);
+                HudOverlay.DrawLaunchCountdown(
+                    _lineRenderer,
+                    _state.PlayfieldCenter,
+                    _state.LaunchCountdownDisplay);
             }
         }
         else
         {
-            HudOverlay.DrawStartPrompt(_lineRenderer);
+            if (_state.IsGameOver)
+            {
+                HudOverlay.DrawGameOver(_lineRenderer, _state.PlayfieldCenter);
+            }
+
+            HudOverlay.DrawPressButton1ToStart(_lineRenderer);
         }
 
         _state.DrawLevelClearOverlay(_lineRenderer);
@@ -227,9 +257,16 @@ public class Game1 : Microsoft.Xna.Framework.Game
             return $"VectorBreakout — {_state.Score}";
         }
 
-        if (_spinnerInput.IsConnected)
+        if (_controllerInput.IsConnected)
         {
-            return $"VectorBreakout — {_state.Score} [{_spinnerInput.DeviceName}]";
+            string mode = _controllerInput.ActiveMode switch
+            {
+                BreakoutControllerMode.AbsolutePaddle => "paddle",
+                BreakoutControllerMode.SpinnerDelta => "spinner",
+                BreakoutControllerMode.VelocityStick => "stick",
+                _ => "controller",
+            };
+            return $"VectorBreakout — {_state.Score} [{_controllerInput.DeviceName} · {mode}]";
         }
 
         if (!Joystick.IsSupported)

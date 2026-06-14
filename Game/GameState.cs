@@ -5,33 +5,26 @@ using Microsoft.Xna.Framework.Input;
 using VectorBreakout.Audio;
 using VectorBreakout.Effects;
 using VectorBreakout.Math;
+using VectorBreakout.Input;
 using VectorBreakout.Rendering;
 
 namespace VectorBreakout.Game;
 
 public sealed class GameState
 {
-    private const float ArenaPadding = 26f;
     private const int PointsPerBrick = 1000;
-    private const float OuterWallThickness = 20f;
-    private const float CenterBrickStartRadius = 90f;
-    private const int CenterBrickRingCount = 4;
-    private const float CenterBrickRingSpacing = 34f;
-    private const float CenterBrickHalfThickness = 8f;
-    private const float CenterGravityStrength = 110f;
     private static readonly float MaxPaddleDeflectionRadians = MathHelper.ToRadians(40f);
     private const float BrickHitSpeedMultiplier = 1.08f;
     private const float MaxBallSpeedMultiplier = 2.65f;
     private const float HitStopDurationSeconds = 0.042f;
     private const float BrickFlashDurationSeconds = 0.055f;
-    private const float LaunchSpeed = 255f;
     private const float PaddleSizeScale = 0.75f;
+    public const float LaunchCountdownDurationSeconds = 3f;
 
     private Vector2 _center;
     private Vector2 _ballLaunchPosition;
     private Vector2 _ballLaunchVelocity;
     private float _arenaRadius;
-    private int _viewportWidth;
     private float _baseBallSpeed;
     private Vector2 _previousBallPosition;
     private float _hitStopRemaining;
@@ -42,9 +35,9 @@ public sealed class GameState
     private readonly ScreenShake _screenShake = new();
     private readonly LevelClearSequence _levelClear = new();
     private ProceduralSfxPlayer? _sfx;
+    private float _launchCountdownRemaining;
 
-    public float CenterBrickOuterRadius =>
-        CenterBrickStartRadius + ((CenterBrickRingCount - 1) * CenterBrickRingSpacing) + CenterBrickHalfThickness;
+    public float CenterBrickOuterRadius => PlayfieldMetrics.CenterBrickOuterRadius;
 
     public PaddleOrbitController Paddle { get; }
     public Ball Ball { get; }
@@ -62,6 +55,12 @@ public sealed class GameState
     public float ArenaRadius => _arenaRadius;
     public bool CenterGravityEnabled { get; private set; }
     public bool IsLaunched { get; private set; }
+    public bool IsLaunchCountdownActive =>
+        _launchCountdownRemaining > 0f && !IsLaunched && !IsLevelClearActive && !IsGameOver;
+    public int LaunchCountdownDisplay =>
+        IsLaunchCountdownActive
+            ? System.Math.Max(1, (int)MathF.Ceiling(_launchCountdownRemaining))
+            : 0;
     public bool IsLevelClearActive => _levelClear.IsActive;
     public bool IsAwaitingLevelAdvance => _levelClear.AwaitingAdvance;
     public int HudDisplayScore =>
@@ -70,7 +69,7 @@ public sealed class GameState
     public GameState(Viewport viewport)
     {
         Paddle = new PaddleOrbitController(100f);
-        Ball = new Ball(Vector2.Zero, Vector2.Zero, 6f);
+        Ball = new Ball(Vector2.Zero, Vector2.Zero, PlayfieldMetrics.BallRadius);
         RefreshBallRestOnPaddle();
         Explosions.Policy = ExplosionPolicy.SpecialBricksOnly;
         ResizeToViewport(viewport);
@@ -78,12 +77,12 @@ public sealed class GameState
 
     public void ResizeToViewport(Viewport viewport)
     {
-        _viewportWidth = viewport.Width;
-        _center = new Vector2(viewport.Width * 0.5f, viewport.Height * 0.5f);
-        _arenaRadius = (System.MathF.Min(viewport.Width, viewport.Height) * 0.5f) - ArenaPadding;
+        PlayfieldMetrics.Update(viewport.Width, viewport.Height);
+        _center = PlayfieldMetrics.Center;
+        _arenaRadius = PlayfieldMetrics.ArenaRadius;
 
-        float paddleOrbitRadius = _arenaRadius - (OuterWallThickness * 0.5f) - 14f;
-        Paddle.OrbitRadius = paddleOrbitRadius;
+        Paddle.OrbitRadius = PlayfieldMetrics.PaddleOrbitRadius;
+        Ball.Radius = PlayfieldMetrics.BallRadius;
         RefreshBallRestOnPaddle();
 
         if (!IsLaunched)
@@ -99,6 +98,18 @@ public sealed class GameState
         }
     }
 
+    public void BeginLaunchCountdown()
+    {
+        RefreshBallRestOnPaddle();
+        Ball.Reset(_ballLaunchPosition, Vector2.Zero);
+        IsLaunched = false;
+        _previousBallPosition = _ballLaunchPosition;
+        _launchCountdownRemaining = LaunchCountdownDurationSeconds;
+        _ballVisuals.Reset();
+        _hitStopRemaining = 0f;
+        _paddleBounceCooldown = 0f;
+    }
+
     public void Launch()
     {
         if (IsLaunched || IsLevelClearActive)
@@ -106,6 +117,7 @@ public sealed class GameState
             return;
         }
 
+        _launchCountdownRemaining = 0f;
         RefreshBallRestOnPaddle();
         IsLaunched = true;
         Ball.Position = _ballLaunchPosition;
@@ -126,26 +138,19 @@ public sealed class GameState
         _levelClear.Reset();
         CenterGravityEnabled = false;
         BuildBricks();
-        IsLaunched = false;
-        RefreshBallRestOnPaddle();
-        Ball.Position = _ballLaunchPosition;
-        Ball.Velocity = Vector2.Zero;
-        _previousBallPosition = _ballLaunchPosition;
-        _ballVisuals.Reset();
-        _hitStopRemaining = 0f;
-        _paddleBounceCooldown = 0f;
+        BeginLaunchCountdown();
     }
 
     public void ApplyLevelClearScore(int totalScore) => Score = totalScore;
 
-    public void Update(float dt, MouseState mouse, bool gameplayActive, float? spinnerAxis = null)
+    public void Update(float dt, MouseState mouse, bool gameplayActive, PaddleControlInput? controllerInput = null)
     {
         if (IsGameOver)
         {
             return;
         }
 
-        Paddle.Update(dt, mouse, _viewportWidth, spinnerAxis);
+        Paddle.Update(dt, mouse, _center, controllerInput);
 
         if (_levelClear.IsActive)
         {
@@ -162,12 +167,22 @@ public sealed class GameState
         Bricks.Update(dt);
         TryBeginLevelClear();
 
-        if (!gameplayActive || !IsLaunched)
+        if (!gameplayActive)
         {
             RefreshBallRestOnPaddle();
             Ball.Position = _ballLaunchPosition;
             Ball.Velocity = Vector2.Zero;
             _previousBallPosition = _ballLaunchPosition;
+            return;
+        }
+
+        if (!IsLaunched)
+        {
+            RefreshBallRestOnPaddle();
+            Ball.Position = _ballLaunchPosition;
+            Ball.Velocity = Vector2.Zero;
+            _previousBallPosition = _ballLaunchPosition;
+            UpdateLaunchCountdown(dt);
             return;
         }
 
@@ -214,20 +229,43 @@ public sealed class GameState
         }
 
         Vector2 direction = toCenter / distance;
-        Ball.Velocity += direction * CenterGravityStrength * dt;
+        Ball.Velocity += direction * PlayfieldMetrics.CenterGravityStrength * dt;
     }
 
     private void HandleArenaExit()
     {
         Vector2 toBall = Ball.Position - _center;
         float distance = toBall.Length();
-        if (distance - Ball.Radius < _arenaRadius + OuterWallThickness)
+        if (distance - Ball.Radius < _arenaRadius + PlayfieldMetrics.OuterWallThickness)
         {
             return;
         }
 
         Lives--;
-        ResetBall(launchImmediately: false);
+        if (Lives <= 0)
+        {
+            ResetBall(launchImmediately: false);
+            _launchCountdownRemaining = 0f;
+        }
+        else
+        {
+            BeginLaunchCountdown();
+        }
+    }
+
+    private void UpdateLaunchCountdown(float dt)
+    {
+        if (_launchCountdownRemaining <= 0f)
+        {
+            return;
+        }
+
+        _launchCountdownRemaining -= dt;
+        if (_launchCountdownRemaining <= 0f)
+        {
+            _launchCountdownRemaining = 0f;
+            Launch();
+        }
     }
 
     private void BounceFromPaddle()
@@ -251,7 +289,7 @@ public sealed class GameState
         hitNormal = Vector2.Normalize(hitNormal);
         float maxSpeed = GetMaxBallSpeed();
         float incomingSpeed = Ball.Velocity.Length();
-        float speed = MathHelper.Clamp(MathHelper.Max(incomingSpeed, 155f), 0f, maxSpeed);
+        float speed = MathHelper.Clamp(MathHelper.Max(incomingSpeed, PlayfieldMetrics.S(155f)), 0f, maxSpeed);
 
         Vector2 hitPosition = Vector2.Lerp(_previousBallPosition, Ball.Position, MathHelper.Clamp(hitT, 0f, 1f));
         Ball.Position = hitPosition + hitNormal * (Ball.Radius + 5f);
@@ -273,7 +311,7 @@ public sealed class GameState
             Ball.Velocity -= hitNormal * normalSpeed;
             if (Ball.Velocity.LengthSquared() < 0.001f)
             {
-                Ball.Velocity = hitNormal * 155f;
+                Ball.Velocity = hitNormal * PlayfieldMetrics.S(155f);
             }
             else
             {
@@ -438,8 +476,8 @@ public sealed class GameState
             launchDir = Vector2.Normalize(launchDir);
         }
 
-        _ballLaunchPosition = paddlePos + launchDir * (Ball.Radius + 6f);
-        _ballLaunchVelocity = launchDir * LaunchSpeed;
+        _ballLaunchPosition = paddlePos + launchDir * (Ball.Radius + PlayfieldMetrics.S(6f));
+        _ballLaunchVelocity = launchDir * PlayfieldMetrics.LaunchSpeed;
     }
 
     private void ApplyBrickBreakEffects(CurvedBrickField.Brick brick)
@@ -454,8 +492,15 @@ public sealed class GameState
     private void BuildBricks()
     {
         Bricks.Clear();
-        Bricks.BuildCenter(_center, CenterBrickStartRadius, CenterBrickRingCount, 22);
-        Bricks.BuildOuterWall(_center, _arenaRadius, 56);
+        Bricks.BuildCenter(
+            _center,
+            PlayfieldMetrics.CenterBrickStartRadius,
+            PlayfieldMetrics.CenterBrickRingCount,
+            PlayfieldMetrics.CenterBricksPerRing,
+            PlayfieldMetrics.CenterBrickRingSpacing,
+            PlayfieldMetrics.CenterBrickRadialThickness,
+            angularGap: 0.05f);
+        Bricks.BuildOuterWall(_center, _arenaRadius, PlayfieldMetrics.OuterWallThickness, wallBricks: 56);
     }
 
     private void ResetBall(bool launchImmediately)
@@ -463,7 +508,7 @@ public sealed class GameState
         RefreshBallRestOnPaddle();
         Ball.Reset(_ballLaunchPosition, launchImmediately ? _ballLaunchVelocity : Vector2.Zero);
         IsLaunched = launchImmediately;
-        _baseBallSpeed = LaunchSpeed;
+        _baseBallSpeed = PlayfieldMetrics.LaunchSpeed;
         _ballVisuals.Reset();
         _hitStopRemaining = 0f;
         _paddleBounceCooldown = 0f;
@@ -491,6 +536,7 @@ public sealed class GameState
         Score = 0;
         IsLaunched = false;
         CenterGravityEnabled = false;
+        _launchCountdownRemaining = 0f;
         ResetBall(launchImmediately: false);
         BuildBricks();
         Explosions.ResetRun();
@@ -526,8 +572,7 @@ public sealed class GameState
 
     private void BuildPaddleOutline(float paddleAngle, List<Vector2> destination)
     {
-        const float basePaddleThickness = 18f;
-        float paddleThickness = basePaddleThickness * PaddleSizeScale;
+        float paddleThickness = PlayfieldMetrics.PaddleThickness * PaddleSizeScale;
         float halfArc = Paddle.HalfArcWidth * PaddleSizeScale;
         float start = paddleAngle - halfArc;
         float end = paddleAngle + halfArc;

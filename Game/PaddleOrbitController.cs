@@ -1,21 +1,11 @@
-using System;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
+using VectorBreakout.Input;
 
 namespace VectorBreakout.Game;
 
 public sealed class PaddleOrbitController
 {
-    /// <summary>
-    /// HID axis delta of 1.0 equals 180° of spinner shaft rotation (firmware position mode).
-    /// </summary>
-    private const float SpinnerAxisToOrbitRadians = MathHelper.Pi;
-
-    /// <summary>
-    /// Normalized axis wraps at ±1.0; unwrap jumps larger than this as one revolution.
-    /// </summary>
-    private const float SpinnerAxisWrapThreshold = 1.5f;
-
     public float Angle;
     public float PreviousAngle;
     public float OrbitRadius;
@@ -24,13 +14,11 @@ public sealed class PaddleOrbitController
 
     /// <summary>
     /// How quickly the paddle catches up to the spinner target each second.
-    /// Higher = snappier, lower = smoother. ~100–160 feels close to raw input.
+    /// Higher = snappier, lower = smoother.
     /// </summary>
-    public float SpinnerAngleSmoothingRate = 90f;
+    public float SpinnerAngleSmoothingRate = 130f;
 
     private float _targetAngle;
-    private float _previousSpinnerAxis;
-    private bool _spinnerNeedsCalibration = true;
 
     public PaddleOrbitController(float orbitRadius)
     {
@@ -44,31 +32,26 @@ public sealed class PaddleOrbitController
         Angle = 0f;
         _targetAngle = 0f;
         PreviousAngle = 0f;
-        ResetSpinnerCalibration();
     }
 
-    public void ResetSpinnerCalibration()
-    {
-        _spinnerNeedsCalibration = true;
-    }
-
-    public void Update(float dt, MouseState mouse, int viewportWidth, float? spinnerAxis = null)
+    public void Update(
+        float dt,
+        MouseState mouse,
+        Vector2 playfieldCenter,
+        PaddleControlInput? controllerInput = null)
     {
         PreviousAngle = Angle;
 
-        if (spinnerAxis.HasValue)
+        if (controllerInput.HasValue)
         {
-            ApplySpinnerDelta(spinnerAxis.Value);
-            SmoothAngleTowardTarget(dt);
+            ApplyControllerInput(controllerInput.Value, dt);
             return;
         }
 
-        _spinnerNeedsCalibration = true;
-
-        if (viewportWidth > 1)
+        Vector2 mouseDelta = new Vector2(mouse.X, mouse.Y) - playfieldCenter;
+        if (mouseDelta.LengthSquared() > 16f)
         {
-            float normalizedX = MathHelper.Clamp(mouse.X / (float)viewportWidth, 0f, 1f);
-            Angle = MathHelper.TwoPi * normalizedX;
+            Angle = MathF.Atan2(mouseDelta.Y, mouseDelta.X);
             _targetAngle = Angle;
             return;
         }
@@ -77,30 +60,25 @@ public sealed class PaddleOrbitController
         _targetAngle = Angle;
     }
 
-    private void ApplySpinnerDelta(float axis)
+    private void ApplyControllerInput(PaddleControlInput input, float dt)
     {
-        axis = MathHelper.Clamp(axis, -1f, 1f);
-
-        if (_spinnerNeedsCalibration)
+        switch (input.Mode)
         {
-            _previousSpinnerAxis = axis;
-            _spinnerNeedsCalibration = false;
-            _targetAngle = Angle;
-            return;
-        }
+            case BreakoutControllerMode.AbsolutePaddle:
+                Angle = input.AbsoluteOrbit01 * MathHelper.TwoPi;
+                _targetAngle = Angle;
+                break;
 
-        float deltaAxis = axis - _previousSpinnerAxis;
-        if (deltaAxis > SpinnerAxisWrapThreshold)
-        {
-            deltaAxis -= 2f;
-        }
-        else if (deltaAxis < -SpinnerAxisWrapThreshold)
-        {
-            deltaAxis += 2f;
-        }
+            case BreakoutControllerMode.SpinnerDelta:
+                _targetAngle += input.SpinnerDeltaRadians;
+                SmoothAngleTowardTarget(dt);
+                break;
 
-        _targetAngle += deltaAxis * SpinnerAxisToOrbitRadians;
-        _previousSpinnerAxis = axis;
+            case BreakoutControllerMode.VelocityStick:
+                Angle += input.StickVelocity * AngularSpeed * dt;
+                _targetAngle = Angle;
+                break;
+        }
     }
 
     private void SmoothAngleTowardTarget(float dt)
